@@ -1,0 +1,222 @@
+﻿
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XML Data Table with Highlighted Search Results and Pagination</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .section {
+            margin-top: 20px;
+            margin-bottom: 40px;
+        }
+
+        .documentation-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .documentation-container {
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        td {
+            color: #555;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+        }
+
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+
+        .element-name {
+            font-weight: bold;
+        }
+
+        .element-documentation {
+            font-style: italic;
+        }
+
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+
+        #search-container {
+            margin: 20px auto;
+            text-align: center;
+        }
+
+        #search-input {
+            padding: 8px;
+            font-size: 14px;
+            width: 300px;
+        }
+
+        #search-button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+            #search-button:hover {
+                background-color: #45a049;
+            }
+
+        .pagination {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+            .pagination button {
+                padding: 8px 16px;
+                margin: 0 5px;
+                background-color: #007BFF;
+                color: white;
+                border: none;
+                cursor: pointer;
+            }
+
+                .pagination button:hover {
+                    background-color: #0056b3;
+                }
+
+            .pagination .disabled {
+                background-color: #ccc;
+                cursor: not-allowed;
+            }
+    </style>
+</head>
+<body>
+    <h1>XML Data Table</h1>
+
+    <div id="search-container">
+        <input type="text" id="search-input" placeholder="Search by name, documentation, element, or element documentation..." />
+        <button id="search-button">Search</button>
+    </div>
+
+    <div id="data-container"></div>
+
+    <div class="pagination">
+        <button id="prev-page" class="disabled">Previous</button>
+        <button id="next-page">Next</button>
+    </div>
+
+    <script>
+        let allData = [];
+        let currentPage = 1;
+        const rowsPerPage = 5;
+
+        fetch('http://localhost:5024/api/XmlData')
+            .then(response => response.json())
+            .then(data => {
+                allData = data;
+                displayData(allData, currentPage);
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+                alert('Error fetching data: ' + error.message);
+                $('#data-container').html('<p class="error">Failed to load data. Please try again later.</p>');
+            });
+
+        function displayData(data, page) {
+            const container = $('#data-container');
+            container.empty();
+            const start = (page - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const pageData = data.slice(start, end);
+
+            pageData.forEach(item => {
+                if (!item.name || !item.documentation) return;
+                const section = $('<div class="section"></div>');
+                section.append(`
+                    <div class="documentation-header">
+                        <span>${highlightText(item.name)}</span><br>
+                        <span>${highlightText(item.documentation || 'No Documentation Available')}</span>
+                    </div>
+                `);
+
+                const elements = [...(item.enumerations || []), ...(item.attributes || []), ...(item.elements || [])]
+                    .map(e => ({ name: e.name || 'No Name', documentation: e.documentation || 'No Documentation' }));
+
+                if (elements.length > 0) {
+                    const table = $('<table></table>');
+                    table.append('<thead><tr><th>Element Name</th><th>Element Documentation</th></tr></thead><tbody></tbody>');
+                    const tbody = table.find('tbody');
+                    elements.forEach(element => {
+                        tbody.append(`<tr><td class="element-name">${highlightText(element.name)}</td><td class="element-documentation">${highlightText(element.documentation)}</td></tr>`);
+                    });
+                    section.append(table);
+                } else {
+                    section.append('<p class="no-data">No elements available</p>');
+                }
+                container.append(section);
+            });
+            handlePaginationButtons(data.length, page);
+        }
+
+        function handlePaginationButtons(totalRows, page) {
+            const totalPages = Math.ceil(totalRows / rowsPerPage);
+            $('#prev-page').toggleClass('disabled', page <= 1);
+            $('#next-page').toggleClass('disabled', page >= totalPages);
+        }
+
+        function highlightText(text) {
+            const searchTerm = $('#search-input').val().toLowerCase();
+            return searchTerm ? text.replace(new RegExp(`(${searchTerm})`, 'gi'), '<span class="highlight">$1</span>') : text;
+        }
+
+        $('#search-button').click(() => {
+            const searchTerm = $('#search-input').val().toLowerCase();
+            displayData(allData.filter(item => [item.name, item.documentation].some(field => field?.toLowerCase().includes(searchTerm))), currentPage);
+        });
+
+        $('#prev-page').click(() => { if (currentPage > 1) displayData(allData, --currentPage); });
+        $('#next-page').click(() => { if (currentPage < Math.ceil(allData.length / rowsPerPage)) displayData(allData, ++currentPage); });
+        $('#search-input').keypress(event => { if (event.key === 'Enter') $('#search-button').click(); });
+    </script>
+</body>
+</html>
